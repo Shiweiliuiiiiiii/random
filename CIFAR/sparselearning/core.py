@@ -523,13 +523,7 @@ class Masking(object):
                 num_nonzeros = (mask != 0).sum().item()
                 val = '{0}: {1}->{2}, density: {3:.3f}'.format(name, self.name2nonzeros[name], num_nonzeros, num_nonzeros/float(mask.numel()))
                 print(val)
-
-
-        for module in self.modules:
-            for name, tensor in module.named_parameters():
-                if name not in self.masks: continue
-                print('Death rate: {0}\n'.format(self.death_rate))
-                break
+        print('Prune rate: {0}\n'.format(self.death_rate))
 
     def fired_masks_update(self):
         ntotal_fired_weights = 0.0
