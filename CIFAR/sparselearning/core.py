@@ -247,7 +247,7 @@ class Masking(object):
         self.module = module
         for name, tensor in module.named_parameters():
             self.names.append(name)
-            self.masks[name] = torch.zeros(tensor, dtype=torch.float32, requires_grad=False).cuda()
+            self.masks[name] = torch.ones_like(tensor, dtype=torch.float32, requires_grad=False).cuda()
 
         print('Removing biases...')
         self.remove_weight_partial_name('bias')
