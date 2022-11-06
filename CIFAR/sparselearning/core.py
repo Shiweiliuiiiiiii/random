@@ -240,7 +240,7 @@ class Masking(object):
                     self.print_nonzero_counts()
             else:
                 pass
-                self.print_nonzero_counts()
+                # self.print_nonzero_counts()
 
 
     def add_module(self, module, density, sparse_init='ER'):
