@@ -284,15 +284,16 @@ def main():
 
         mask = None
         if iter != 0:
-            if args.sparse:
-                decay = CosineDecay(args.death_rate, len(train_loader)*(args.epochs*args.multiplier))
-                mask = Masking(optimizer, death_rate=args.death_rate, death_mode=args.death, death_rate_decay=decay, growth_mode=args.growth,
-                               redistribution_mode=args.redistribution, args=args,train_loader=train_loader)
-                mask.add_module(model, sparse_init=args.sparse_init, density=1-args.sparsity)
+            # load best ckpt in previous IMP iteration for pruning
+            model.load_state_dict(torch.load(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed),  "pretrained_model_iter{}.ckpt".format(iter-1))))
+            decay = CosineDecay(args.death_rate, len(train_loader)*(args.epochs*args.multiplier))
+            mask = Masking(optimizer, death_rate=args.death_rate, death_mode=args.death, death_rate_decay=decay, growth_mode=args.growth,
+                           redistribution_mode=args.redistribution, args=args,train_loader=train_loader)
+            mask.add_module(model, sparse_init=args.sparse_init, density=1-args.sparsity)
 
-                print('loading pretrained weights')
-                model.load_state_dict(torch.load(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed), "initialization_rewinding.ckpt")))
-                mask.apply_mask()
+            print('loading pretrained weights')
+            model.load_state_dict(torch.load(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed), "initialization_rewinding.ckpt")))
+            mask.apply_mask()
 
         best_acc = 0.0
 
@@ -321,11 +322,9 @@ def main():
             if val_acc > best_acc:
                 print('Saving model')
                 best_acc = val_acc
-                # save_checkpoint({
-                #     'epoch': epoch + 1,
-                #     'state_dict': model.state_dict(),
-                #     'optimizer': optimizer.state_dict(),
-                # }, filename=os.path.join(save_subfolder, 'model_final.pth'))
+                if iter == 0:
+                    torch.save(model.state_dict(),
+                           os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed), "pretrained_model_iter{}.ckpt".format(iter)))
 
             print_and_log('Current learning rate: {0}. Time taken for epoch: {1:.2f} seconds.\n'.format(optimizer.param_groups[0]['lr'], time.time() - t0))
         print('Testing model')
