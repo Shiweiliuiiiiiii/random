@@ -171,11 +171,11 @@ def main():
     parser.add_argument('--sparse_mode', type=str, default='GMP', help='fix topology')
     parser.add_argument('--fix', action='store_true',help='Fix sparse connectivity during training. Default: True.')
     parser.add_argument('--sparse_init', type=str, default='ERK', help='sparse initialization')
-    parser.add_argument('--growth', type=str, default='random',help='Growth mode. Choose from: momentum, random, random_unfired, and gradient.')
+    parser.add_argument('--growth', type=str, default='gradient',help='Growth mode. Choose from: momentum, random, random_unfired, and gradient.')
     parser.add_argument('--death', type=str, default='magnitude',help='Death mode / pruning mode. Choose from: magnitude, SET, threshold.')
     parser.add_argument('--redistribution', type=str, default='none',help='Redistribution mode. Choose from: momentum, magnitude, nonzeros, or none.')
     parser.add_argument('--death-rate', type=float, default=0.50, help='The pruning rate / death rate.')
-    parser.add_argument('--density', type=float, default=0.05, help='The density of the overall sparse network.')
+    parser.add_argument('--sparsity', type=float, default=0.05, help='The sparsity of the overall sparse network.')
     parser.add_argument('--update_frequency', type=int, default=100, metavar='N',help='how many iterations to train between parameter exploration')
     parser.add_argument('--imp_iters', type=int, default=11,  help='IMP iterations')
     parser.add_argument('--final_prune_time', type=float, default=0.8, help='The density of the overall sparse network.')
@@ -284,7 +284,7 @@ def main():
             decay = CosineDecay(args.death_rate, len(train_loader)*(args.epochs*args.multiplier))
             mask = Masking(optimizer, death_rate=args.death_rate, death_mode=args.death, death_rate_decay=decay, growth_mode=args.growth,
                            redistribution_mode=args.redistribution, args=args,train_loader=train_loader)
-            mask.add_module(model, sparse_init=args.sparse_init, density=args.density)
+            mask.add_module(model, sparse_init=args.sparse_init, density=1-args.sparsity)
 
         best_acc = 0.0
 
