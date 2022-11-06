@@ -291,7 +291,7 @@ def main():
                 mask.add_module(model, sparse_init=args.sparse_init, density=1-args.sparsity)
 
                 print('loading pretrained weights')
-                model.load_state_dict(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed), "initialization_rewinding.ckpt"))
+                model.load_state_dict(torch.load(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed), "initialization_rewinding.ckpt")))
                 mask.apply_mask()
 
         best_acc = 0.0
