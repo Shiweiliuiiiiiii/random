@@ -15,8 +15,8 @@ source activate prune_cry
 
 for sparsity in 0.2
 do
-    python main.py --sparse --seed 17 --sparse_init iterative_gm --sparse_mode fix --lr 0.1 --sparsity $sparsity \
-    --model cifar_resnet_20 --data cifar10 --epoch 160 --growth gradient --death magnitude --update_frequency 1000 --imp_iters 11 --output_dir ./output/LTH/
+    python main_LTH.py --sparse --seed 17 --sparse_init iterative_gm --sparse_mode fix --lr 0.1 --sparsity $sparsity \
+    --model cifar_resnet_20 --data cifar10 --epoch 1 --growth gradient --death magnitude --update_frequency 1000 --imp_iters 11 --output_dir ./output/LTH/
 done
 
 
