@@ -209,6 +209,7 @@ class Masking(object):
 
         if self.update_frequency is not None:
             if self.sparse_mode == 'GMP':
+                print('*********************************Gradual Magnitude Pruning***********************')
                 if self.steps >= self.initial_prune_time and self.steps < self.final_prune_time and self.steps % self.update_frequency == 0:
                     print('*********************************Gradual Magnitude Pruning***********************')
                     current_prune_rate = self.gradual_pruning_rate(self.steps, 0.0, 1-self.density,

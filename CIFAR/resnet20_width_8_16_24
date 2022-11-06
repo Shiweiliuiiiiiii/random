@@ -15,7 +15,7 @@ source activate prune_cry
 
 for model in cifar_resnet_20 cifar_resnet_32 cifar_resnet_44 cifar_resnet_56 cifar_resnet_110
 do
-    python main.py --sparse --seed 17 --sparse_init dense --sparse_mode GMP --lr 0.1 --density 0.05 --model $model --data cifar10 --epoch 160
+    python main.py --sparse --seed 17 --sparse_init dense --sparse_mode GMP --lr 0.1 --density 0.05 --model cifar_resnet_20 --data cifar10 --epoch 160 --initial_prune_time 0.0 --update_frequency 100
 done
 
 conda deactivate torch151
