@@ -211,7 +211,7 @@ def main():
 
     for iter in range(args.imp_iters):
         print('******************************************')
-        print_and_log("\nIteration start: {0}/{1}\n".format(i+1, args.iters))
+        print_and_log("\nIteration start: {0}/{1}\n".format(iter+1, args.iters))
         print('******************************************')
 
         if args.data == 'mnist':
