@@ -165,8 +165,22 @@ def main():
     parser.add_argument('--bench', action='store_true', help='Enables the benchmarking of layers and estimates sparse speedups')
     parser.add_argument('--max-threads', type=int, default=10, help='How many threads to use for data loading.')
     parser.add_argument('--scaled', action='store_true', help='scale the initialization by 1/density')
-    # ITOP settings
-    sparselearning.core.add_sparse_args(parser)
+
+    # sparse hyperparameters
+    parser.add_argument('--sparse', action='store_true', help='Enable sparse mode. Default: True.')
+    parser.add_argument('--sparse_mode', type=str, default='GMP', help='fix topology')
+    parser.add_argument('--fix', action='store_true',help='Fix sparse connectivity during training. Default: True.')
+    parser.add_argument('--sparse_init', type=str, default='ERK', help='sparse initialization')
+    parser.add_argument('--growth', type=str, default='random',help='Growth mode. Choose from: momentum, random, random_unfired, and gradient.')
+    parser.add_argument('--death', type=str, default='magnitude',help='Death mode / pruning mode. Choose from: magnitude, SET, threshold.')
+    parser.add_argument('--redistribution', type=str, default='none',help='Redistribution mode. Choose from: momentum, magnitude, nonzeros, or none.')
+    parser.add_argument('--death-rate', type=float, default=0.50, help='The pruning rate / death rate.')
+    parser.add_argument('--density', type=float, default=0.05, help='The density of the overall sparse network.')
+    parser.add_argument('--update_frequency', type=int, default=100, metavar='N',help='how many iterations to train between parameter exploration')
+    parser.add_argument('--imp_iters', type=int, default=11,  help='IMP iterations')
+    parser.add_argument('--final_prune_time', type=float, default=0.8, help='The density of the overall sparse network.')
+    parser.add_argument('--initial_prune_time', type=float, default=0.1, help='The density of the overall sparse network.')
+
 
     args = parser.parse_args()
     setup_logger(args)
@@ -257,7 +271,6 @@ def main():
             else:
                 print_and_log("=> no checkpoint found at '{}'".format(args.resume))
 
-
         if args.fp16:
             print('FP16')
             optimizer = FP16_Optimizer(optimizer,
@@ -275,11 +288,11 @@ def main():
 
         best_acc = 0.0
 
-        # create output file
-        save_path = './save/' + str(args.model) + '/' + str(args.data) + '/' + str(args.sparse_init) + '/' + str(args.seed)
-        if args.sparse: save_subfolder = os.path.join(save_path, 'sparsity' + str(1 - args.density))
-        else: save_subfolder = os.path.join(save_path, 'dense')
-        if not os.path.exists(save_subfolder): os.makedirs(save_subfolder)
+        # # create output file
+        # save_path = './save/' + str(args.model) + '/' + str(args.data) + '/' + str(args.sparse_init) + '/' + str(args.seed)
+        # if args.sparse: save_subfolder = os.path.join(save_path, 'sparsity' + str(1 - args.density))
+        # else: save_subfolder = os.path.join(save_path, 'dense')
+        # if not os.path.exists(save_subfolder): os.makedirs(save_subfolder)
 
 
         for epoch in range(1, args.epochs*args.multiplier + 1):
@@ -293,15 +306,15 @@ def main():
             if val_acc > best_acc:
                 print('Saving model')
                 best_acc = val_acc
-                save_checkpoint({
-                    'epoch': epoch + 1,
-                    'state_dict': model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                }, filename=os.path.join(save_subfolder, 'model_final.pth'))
+                # save_checkpoint({
+                #     'epoch': epoch + 1,
+                #     'state_dict': model.state_dict(),
+                #     'optimizer': optimizer.state_dict(),
+                # }, filename=os.path.join(save_subfolder, 'model_final.pth'))
 
             print_and_log('Current learning rate: {0}. Time taken for epoch: {1:.2f} seconds.\n'.format(optimizer.param_groups[0]['lr'], time.time() - t0))
         print('Testing model')
-        model.load_state_dict(torch.load(os.path.join(save_subfolder, 'model_final.pth'))['state_dict'])
+        # model.load_state_dict(torch.load(os.path.join(save_subfolder, 'model_final.pth'))['state_dict'])
         evaluate(args, model, device, test_loader, is_test_set=True)
         print_and_log("\nIteration end: {0}/{1}\n".format(i+1, args.iters))
 

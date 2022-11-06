@@ -6,17 +6,6 @@ from sparselearning.snip import SNIP, GraSP
 import numpy as np
 import math
 
-def add_sparse_args(parser):
-    parser.add_argument('--sparse', action='store_true', help='Enable sparse mode. Default: True.')
-    parser.add_argument('--fix', action='store_true', help='Fix sparse connectivity during training. Default: True.')
-    parser.add_argument('--sparse_init', type=str, default='ERK', help='sparse initialization')
-    parser.add_argument('--growth', type=str, default='random', help='Growth mode. Choose from: momentum, random, random_unfired, and gradient.')
-    parser.add_argument('--death', type=str, default='magnitude', help='Death mode / pruning mode. Choose from: magnitude, SET, threshold.')
-    parser.add_argument('--redistribution', type=str, default='none', help='Redistribution mode. Choose from: momentum, magnitude, nonzeros, or none.')
-    parser.add_argument('--death-rate', type=float, default=0.50, help='The pruning rate / death rate.')
-    parser.add_argument('--density', type=float, default=0.05, help='The density of the overall sparse network.')
-    parser.add_argument('--update_frequency', type=int, default=100, metavar='N', help='how many iterations to train between parameter exploration')
-    parser.add_argument('--decay-schedule', type=str, default='cosine', help='The decay schedule for the pruning rate. Default: cosine. Choose from: cosine, linear.')
 
 
 class CosineDecay(object):
@@ -62,6 +51,11 @@ class Masking(object):
         self.redistribution_mode = redistribution_mode
         self.death_rate_decay = death_rate_decay
 
+        self.sparse_mode = args.sparse_mode
+        self.initial_prune_time = args.initial_prune_time
+        self.final_prune_time = args.final_prune_time
+
+
         self.masks = {}
         self.modules = []
         self.names = []
@@ -75,13 +69,24 @@ class Masking(object):
         self.steps = 0
 
         # if fix, then we do not explore the sparse connectivity
-        if self.args.fix: self.prune_every_k_steps = None
-        else: self.prune_every_k_steps = self.args.update_frequency
+        if args.fix: self.update_frequency = None
+        else: self.update_frequency = args.update_frequency
 
     def init(self, mode='ERK', density=0.05, erk_power_scale=1.0):
         self.density = density
-        if mode == 'global_magnitude':
-            print('initialize by global magnitude')
+
+        if mode == 'dense':
+            print('initialized with dense model')
+            self.baseline_nonzero = 0
+            for module in self.modules:
+                for name, weight in module.named_parameters():
+                    if name not in self.masks: continue
+                    self.masks[name] = torch.ones_like(weight, dtype=torch.float32, requires_grad=False).to('cuda')
+
+        elif mode == 'one_shot_gm':
+            print('initialize by one_shot_gm')
+            self.baseline_nonzero = 0
+
             weight_abs = []
             for module in self.modules:
                 for name, weight in module.named_parameters():
@@ -90,7 +95,7 @@ class Masking(object):
 
             # Gather all scores in a single vector and normalise
             all_scores = torch.cat([torch.flatten(x) for x in weight_abs])
-            num_params_to_keep = int(len(all_scores) * self.density)
+            num_params_to_keep = int(len(all_scores) * density)
 
             threshold, _ = torch.topk(all_scores, num_params_to_keep, sorted=True)
             acceptable_score = threshold[-1]
@@ -98,7 +103,71 @@ class Masking(object):
             for module in self.modules:
                 for name, weight in module.named_parameters():
                     if name not in self.masks: continue
-                    self.masks[name] = ((torch.abs(weight)) >= acceptable_score).float()
+                    self.masks[name] = ((torch.abs(weight)) > acceptable_score).float().data.to('cuda')
+
+        elif mode == 'one_shot_gm_cpu':
+            print('initialize by one_shot_gm')
+            self.baseline_nonzero = 0
+
+            weight_abs = []
+            for module in self.modules:
+                for name, weight in module.named_parameters():
+                    if name not in self.masks: continue
+                    weight_abs.append(torch.abs(weight.cpu()))
+
+            # Gather all scores in a single vector and normalise
+            all_scores = torch.cat([torch.flatten(x) for x in weight_abs])
+            num_params_to_keep = int(len(all_scores) * density)
+
+            threshold, _ = torch.topk(all_scores, num_params_to_keep, sorted=True)
+            acceptable_score = threshold[-1]
+
+            for module in self.modules:
+                for name, weight in module.named_parameters():
+                    if name not in self.masks: continue
+                    self.masks[name] = ((torch.abs(weight)) > acceptable_score).float().data.to('cuda')
+
+        elif mode == 'random':
+            print('initialize by random pruning')
+            self.baseline_nonzero = 0
+            for module in self.modules:
+                for name, weight in module.named_parameters():
+                    if name not in self.masks: continue
+                    self.masks[name] = (torch.rand(weight.shape) < density).float().data.to('cuda')
+
+        if mode == 'iterative_gm':
+            print('initialized by iterative_gm')
+            total_num_nonzoros = 0
+            dense_nonzeros = 0
+            for module in self.modules:
+                for name, weight in module.named_parameters():
+                    if name not in self.masks: continue
+                    self.masks[name] = (weight != 0).cuda()
+                    self.name2nonzeros[name] = (weight != 0).sum().item()
+                    total_num_nonzoros += self.name2nonzeros[name]
+                    dense_nonzeros += weight.numel()
+                    print(f'sparsity of layer {name} is {self.name2nonzeros[name] / weight.numel()}')
+
+            print(f'sparsity level of current model is {1 - total_num_nonzoros / dense_nonzeros}')
+
+            weight_abs = []
+            for module in self.modules:
+                for name, weight in module.named_parameters():
+                    if name not in self.masks: continue
+                    weight_abs.append(torch.abs(weight))
+
+            # Gather all scores in a single vector and normalise
+            all_scores = torch.cat([torch.flatten(x) for x in weight_abs])
+            num_params_to_keep = int(total_num_nonzoros * density)
+
+            threshold, _ = torch.topk(all_scores, num_params_to_keep, sorted=True)
+            acceptable_score = threshold[-1]
+
+            for module in self.modules:
+                for name, weight in module.named_parameters():
+                    if name not in self.masks: continue
+                    self.masks[name] = ((torch.abs(weight)) > acceptable_score).float().data.to('cuda')
+
 
         elif mode == 'snip':
             print('initialize by snip')
@@ -113,156 +182,6 @@ class Masking(object):
             # re-sample mask positions
             for sparsity_, name in zip(layer_wise_sparsities, self.masks):
                 self.masks[name][:] = (torch.rand(self.masks[name].shape) < (1-sparsity_)).float().data.cuda()
-
-
-        elif mode == 'uniform_plus':
-            print('initialize by uniform+')
-            total_params = 0
-            for name, weight in self.masks.items():
-                total_params += weight.numel()
-            total_sparse_params = total_params * self.density
-
-            # remove the first layer
-            total_sparse_params = total_sparse_params - self.masks['conv.weight'].numel()
-            self.masks.pop('conv.weight')
-
-            if self.density < 0.2:
-                total_sparse_params = total_sparse_params - self.masks['fc.weight'].numel() * 0.2
-                self.density = float(total_sparse_params / total_params)
-
-                for module in self.modules:
-                    for name, weight in module.named_parameters():
-                        if name not in self.masks: continue
-                        if name != 'fc.weight':
-                            self.masks[name][:] = (torch.rand(weight.shape) < self.density).float().data.cuda()
-                        else:
-                            self.masks[name][:] = (torch.rand(weight.shape) < 0.2).float().data.cuda()
-            else:
-                for module in self.modules:
-                    for name, weight in module.named_parameters():
-                        if name not in self.masks: continue
-                        self.masks[name][:] = (torch.rand(weight.shape) < self.density).float().data.cuda()
-
-        elif mode == 'uniform':
-            print('initialize by uniform')
-            self.baseline_nonzero = 0
-            for module in self.modules:
-                for name, weight in module.named_parameters():
-                    if name not in self.masks: continue
-                    self.masks[name][:] = (torch.rand(weight.shape) < self.density).float().data.cuda()
-                    self.baseline_nonzero += weight.numel()*density
-
-        elif mode == 'ER':
-            print('initialize by ER')
-            total_params = 0
-            for name, weight in self.masks.items():
-                total_params += weight.numel()
-            is_epsilon_valid = False
-
-            dense_layers = set()
-            while not is_epsilon_valid:
-
-                divisor = 0
-                rhs = 0
-                raw_probabilities = {}
-                for name, mask in self.masks.items():
-                    n_param = np.prod(mask.shape)
-                    n_zeros = n_param * (1 - self.density)
-                    n_ones = n_param * self.density
-
-                    if name in dense_layers:
-                        rhs -= n_zeros
-                    else:
-                        rhs += n_ones
-                        raw_probabilities[name] = (
-                                                          np.sum(mask.shape[:2]) / np.prod(mask.shape[:2])
-                                                  ) ** erk_power_scale
-                        divisor += raw_probabilities[name] * n_param
-                epsilon = rhs / divisor
-                max_prob = np.max(list(raw_probabilities.values()))
-                max_prob_one = max_prob * epsilon
-                if max_prob_one > 1:
-                    is_epsilon_valid = False
-                    for mask_name, mask_raw_prob in raw_probabilities.items():
-                        if mask_raw_prob == max_prob:
-                            print(f"Sparsity of var:{mask_name} had to be set to 0.")
-                            dense_layers.add(mask_name)
-                else:
-                    is_epsilon_valid = True
-
-            density_dict = {}
-            total_nonzero = 0.0
-            # With the valid epsilon, we can set sparsities of the remaning layers.
-            for name, mask in self.masks.items():
-                n_param = np.prod(mask.shape)
-                if name in dense_layers:
-                    density_dict[name] = 1.0
-                else:
-                    probability_one = epsilon * raw_probabilities[name]
-                    density_dict[name] = probability_one
-                print(
-                    f"layer: {name}, shape: {mask.shape}, density: {density_dict[name]}"
-                )
-                self.masks[name][:] = (torch.rand(mask.shape) < density_dict[name]).float().data.cuda()
-
-                total_nonzero += density_dict[name] * mask.numel()
-            print(f"Overall sparsity {total_nonzero / total_params}")
-
-        elif mode == 'ERK':
-            print('initialize by ERK')
-            total_params = 0
-            for name, weight in self.masks.items():
-                total_params += weight.numel()
-            is_epsilon_valid = False
-
-            dense_layers = set()
-            while not is_epsilon_valid:
-
-                divisor = 0
-                rhs = 0
-                raw_probabilities = {}
-                for name, mask in self.masks.items():
-                    n_param = np.prod(mask.shape)
-                    n_zeros = n_param * (1 - self.density)
-                    n_ones = n_param * self.density
-
-                    if name in dense_layers:
-                        rhs -= n_zeros
-                    else:
-                        rhs += n_ones
-                        raw_probabilities[name] = (
-                                                          np.sum(mask.shape) / np.prod(mask.shape)
-                                                  ) ** erk_power_scale
-                        divisor += raw_probabilities[name] * n_param
-                epsilon = rhs / divisor
-                max_prob = np.max(list(raw_probabilities.values()))
-                max_prob_one = max_prob * epsilon
-                if max_prob_one > 1:
-                    is_epsilon_valid = False
-                    for mask_name, mask_raw_prob in raw_probabilities.items():
-                        if mask_raw_prob == max_prob:
-                            print(f"Sparsity of var:{mask_name} had to be set to 0.")
-                            dense_layers.add(mask_name)
-                else:
-                    is_epsilon_valid = True
-
-            density_dict = {}
-            total_nonzero = 0.0
-            # With the valid epsilon, we can set sparsities of the remaning layers.
-            for name, mask in self.masks.items():
-                n_param = np.prod(mask.shape)
-                if name in dense_layers:
-                    density_dict[name] = 1.0
-                else:
-                    probability_one = epsilon * raw_probabilities[name]
-                    density_dict[name] = probability_one
-                print(
-                    f"layer: {name}, shape: {mask.shape}, density: {density_dict[name]}"
-                )
-                self.masks[name][:] = (torch.rand(mask.shape) < density_dict[name]).float().data.cuda()
-
-                total_nonzero += density_dict[name] * mask.numel()
-            print(f"Overall sparsity {total_nonzero / total_params}")
 
         self.apply_mask()
 
@@ -288,10 +207,38 @@ class Masking(object):
         self.death_rate = self.death_rate_decay.get_dr()
         self.steps += 1
 
-        if self.prune_every_k_steps is not None:
-            if self.steps % self.prune_every_k_steps == 0:
-                self.truncate_weights()
-                _, _ = self.fired_masks_update()
+        if self.update_frequency is not None:
+            if self.sparse_mode == 'GMP':
+                if self.steps >= self.initial_prune_time and self.steps < self.final_prune_time and self.steps % self.update_frequency == 0:
+                    print('*********************************Gradual Magnitude Pruning***********************')
+                    current_prune_rate = self.gradual_pruning_rate(self.steps, 0.0, 1-self.density,
+                                                                   self.initial_prune_time, self.final_prune_time)
+                    self.gradual_magnitude_pruning(current_prune_rate)
+                    self.print_status()
+
+            elif self.sparse_mode == 'GMP_cpu':
+                if self.steps >= self.initial_prune_time and self.steps < self.final_prune_time and self.steps % self.update_frequency == 0:
+                    print('*********************************Gradual Magnitude Pruning***********************')
+                    current_prune_rate = self.gradual_pruning_rate(self.steps, 0.0, 1-self.density,
+                                                                   self.initial_prune_time, self.final_prune_time)
+                    self.gradual_magnitude_pruning(current_prune_rate, True)
+                    self.print_status()
+
+            elif self.sparse_mode == 'oBERT':
+                if self.steps >= self.initial_prune_time and self.steps < self.final_prune_time and self.steps % self.update_frequency == 0:
+                    print('*********************************Gradual oBERT Pruning***********************')
+                    current_prune_rate = self.gradual_pruning_rate(self.steps, 0.0, 1-self.density,
+                                                                   self.initial_prune_time, self.final_prune_time)
+                    self.gradual_oBERT_pruning(current_prune_rate)
+                    self.print_status()
+
+            elif self.sparse_mode == 'DST':
+                if self.steps % self.update_frequency == 0:
+                    print('*********************************Dynamic Sparsity********************************')
+                    self.truncate_weights()
+                    self.print_nonzero_counts()
+            else:
+                pass
                 self.print_nonzero_counts()
 
 
@@ -300,7 +247,7 @@ class Masking(object):
         self.module = module
         for name, tensor in module.named_parameters():
             self.names.append(name)
-            self.masks[name] = torch.zeros_like(tensor, dtype=torch.float32, requires_grad=False).cuda()
+            self.masks[name] = torch.ones(tensor, dtype=torch.float32, requires_grad=False).cuda()
 
         print('Removing biases...')
         self.remove_weight_partial_name('bias')
@@ -598,3 +545,57 @@ class Masking(object):
         total_fired_weights = ntotal_fired_weights/ntotal_weights
         print('The percentage of the total fired weights is:', total_fired_weights)
         return layer_fired_weights, total_fired_weights
+
+    def gradual_pruning_rate(self,
+            step: int,
+            initial_threshold: float,
+            final_threshold: float,
+            initial_time: int,
+            final_time: int,
+    ):
+        if step <= initial_time:
+            threshold = initial_threshold
+        elif step > final_time:
+            threshold = final_threshold
+        else:
+            mul_coeff = 1 - (step - initial_time) / (final_time - initial_time)
+            threshold = final_threshold + (initial_threshold - final_threshold) * (mul_coeff ** 3)
+
+        return threshold
+
+    def gradual_magnitude_pruning(self, current_pruning_rate, cpu=False):
+        weight_abs = []
+        for module in self.modules:
+            for name, weight in module.named_parameters():
+                if name not in self.masks: continue
+                if cpu:
+                    weight_abs.append(torch.abs(weight.cpu()))
+                else:
+                    weight_abs.append(torch.abs(weight))
+
+        # Gather all scores in a single vector and normalise
+        all_scores = torch.cat([torch.flatten(x) for x in weight_abs])
+        num_params_to_keep = int(len(all_scores) * (1 - current_pruning_rate))
+
+        threshold, _ = torch.topk(all_scores, num_params_to_keep, sorted=True)
+        acceptable_score = threshold[-1]
+
+        for module in self.modules:
+            for name, weight in module.named_parameters():
+                if name not in self.masks: continue
+                self.masks[name] = ((torch.abs(weight)) > acceptable_score).float().data.to(self.device)
+        self.apply_mask()
+
+    def print_status(self):
+        total_size = 0
+        sparse_size = 0
+        for module in self.modules:
+            for name, weight in module.named_parameters():
+                if name not in self.masks: continue
+                dense_weight_num = weight.numel()
+                sparse_weight_num = (weight != 0).sum().int().item()
+                total_size += dense_weight_num
+                sparse_size += sparse_weight_num
+                layer_density = sparse_weight_num / dense_weight_num
+                print(f'sparsity of layer {name} with tensor {weight.size()} is {1-layer_density}')
+        print('Final sparsity level of {0}: {1}'.format(1-self.density, 1 - sparse_size / total_size))
