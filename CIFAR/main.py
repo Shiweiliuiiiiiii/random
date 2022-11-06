@@ -229,7 +229,7 @@ def main():
         if 'vgg' in args.model:
             model = vgg.VGG(depth=int(args.model[-2:]), dataset=args.data, batchnorm=True).to(device)
         else:
-            model = cifar_resnet.Model.get_model_from_name(args.model, initializers.initializations(init_type, args.density), outputs=output).to(device)
+            model = cifar_resnet.Model.get_model_from_name(args.model, initializers.initializations(init_type, 1-args.sparsity), outputs=output).to(device)
 
         print_and_log(model)
         print_and_log('=' * 60)
