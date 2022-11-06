@@ -211,7 +211,7 @@ def main():
 
     for iter in range(args.imp_iters):
         print('******************************************')
-        print_and_log("\nIteration start: {0}/{1}\n".format(iter+1, args.iters))
+        print_and_log("\nIteration start: {0}/{1}\n".format(iter+1, args.imp_iters))
         print('******************************************')
 
         if args.data == 'mnist':
@@ -331,7 +331,7 @@ def main():
         print('Testing model')
         # model.load_state_dict(torch.load(os.path.join(save_subfolder, 'model_final.pth'))['state_dict'])
         evaluate(args, model, device, test_loader, is_test_set=True)
-        print_and_log("\nIteration end: {0}/{1}\n".format(iter+1, args.iters))
+        print_and_log("\nIteration end: {0}/{1}\n".format(iter+1, args.imp_iters))
 
 
 if __name__ == '__main__':
