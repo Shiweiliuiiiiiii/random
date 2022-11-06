@@ -285,8 +285,10 @@ def main():
         mask = None
         if iter != 0:
             # load best ckpt in previous IMP iteration for pruning
+            print('load best ckpt in previous IMP iteration for pruning')
             model.load_state_dict(torch.load(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed),  "pretrained_model_iter{}.ckpt".format(iter-1))))
             decay = CosineDecay(args.death_rate, len(train_loader)*(args.epochs*args.multiplier))
+            print('Iterative magnitude pruning')
             mask = Masking(optimizer, death_rate=args.death_rate, death_mode=args.death, death_rate_decay=decay, growth_mode=args.growth,
                            redistribution_mode=args.redistribution, args=args,train_loader=train_loader)
             mask.add_module(model, sparse_init=args.sparse_init, density=1-args.sparsity)
@@ -307,7 +309,7 @@ def main():
 
         for epoch in range(1, args.epochs*args.multiplier + 1):
 
-            if iter==0 and epoch == 1:
+            if iter==0 and epoch == 8:
                 if not os.path.exists(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed))):
                     os.makedirs(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed)))
                 torch.save(model.state_dict(),
