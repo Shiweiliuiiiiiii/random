@@ -299,7 +299,8 @@ def main():
 
         best_acc = 0.0
 
-
+        if not os.path.exists(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed))):
+            os.makedirs(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed)))
         # # create output file
         # save_path = './save/' + str(args.model) + '/' + str(args.data) + '/' + str(args.sparse_init) + '/' + str(args.seed)
         # if args.sparse: save_subfolder = os.path.join(save_path, 'sparsity' + str(1 - args.density))
@@ -310,8 +311,6 @@ def main():
         for epoch in range(1, args.epochs*args.multiplier + 1):
 
             if iter==0 and epoch == 8:
-                if not os.path.exists(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed))):
-                    os.makedirs(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed)))
                 torch.save(model.state_dict(),
                            os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed), "initialization_rewinding.ckpt"))
 
