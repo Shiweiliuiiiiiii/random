@@ -53,7 +53,7 @@ class Masking(object):
 
         self.sparse_mode = args.sparse_mode
 
-        self.total_step = self.prune_rate_decay.T_max
+        self.total_step = self.death_rate_decay.T_max
         self.final_prune_time = int(self.total_step * args.final_prune_time)
         self.initial_prune_time = int(self.total_step * args.initial_prune_time)
 
