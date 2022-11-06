@@ -306,7 +306,7 @@ def main():
 
         for epoch in range(1, args.epochs*args.multiplier + 1):
 
-            if iter==0 and epoch == 8:
+            if iter==0 and epoch == 1:
                 if not os.path.exists(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed))):
                     os.makedirs(os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed)))
                 torch.save(model.state_dict(),
