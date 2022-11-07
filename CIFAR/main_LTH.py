@@ -211,7 +211,7 @@ def main():
 
     for iter in range(args.imp_iters):
         print('******************************************')
-        print_and_log("\nIteration start: {0}/{1}\n".format(iter+1, args.imp_iters))
+        print_and_log("\nIteration start: {0}/{1}\n".format(iter, args.imp_iters))
         print('******************************************')
 
         if args.data == 'mnist':
@@ -323,15 +323,14 @@ def main():
             if val_acc > best_acc:
                 print('Saving model')
                 best_acc = val_acc
-                if iter == 0:
-                    torch.save(model.state_dict(),
-                           os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed), "pretrained_model_iter{}.ckpt".format(iter)))
+                torch.save(model.state_dict(),
+                       os.path.join(args.output_dir, "Initialization_seed{}".format(args.seed), "pretrained_model_iter{}.ckpt".format(iter)))
 
             print_and_log('Current learning rate: {0}. Time taken for epoch: {1:.2f} seconds.\n'.format(optimizer.param_groups[0]['lr'], time.time() - t0))
         print('Testing model')
         # model.load_state_dict(torch.load(os.path.join(save_subfolder, 'model_final.pth'))['state_dict'])
         evaluate(args, model, device, test_loader, is_test_set=True)
-        print_and_log("\nIteration end: {0}/{1}\n".format(iter+1, args.imp_iters))
+        print_and_log("\nIteration end: {0}/{1}\n".format(iter, args.imp_iters))
 
 
 if __name__ == '__main__':
